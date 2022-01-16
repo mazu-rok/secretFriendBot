@@ -1,0 +1,18 @@
+version: "3.2"
+
+services:
+  build:
+    image: maven:3.8.3-openjdk-17
+    container_name: build
+    working_dir: /root/workdir
+    volumes:
+      - ../../:/root/workdir
+    entrypoint: mvn clean install -DskipTests
+
+  build-with-tests:
+    image: maven:3.8.3-openjdk-17
+    container_name: build-with-tests
+    working_dir: /root/workdir
+    volumes:
+      - ../../:/root/workdir
+    entrypoint: mvn clean install

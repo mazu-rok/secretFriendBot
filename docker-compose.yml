@@ -1,0 +1,59 @@
+version: "3.2"
+
+services:
+  secret-friend-bot:
+    build:
+      context: .
+      dockerfile: setup/secret-friend-bot-docker/Dockerfile
+    image: mazurokandrii/secret-friend-bot:${BOT_VERSION:?err}
+    container_name: secret-friend-bot
+    depends_on:
+      - secret-friend-bot-mongodb
+    env_file:
+      - setup/secret-friend-bot-docker/java.env
+    environment:
+      BOT_NAME: ${BOT_NAME}
+      BOT_TOKEN: ${BOT_TOKEN}
+      MONGODB_HOST: ${MONGODB_HOST}
+      MONGODB_PORT: ${MONGODB_PORT}
+      MONGO_DB: ${MONGO_DB}
+    tty: true
+    ports:
+      - "5005:5005"
+    stdin_open: true
+    networks:
+      secret-friend-bot-network:
+        ipv4_address: 10.0.11.99
+
+  secret-friend-bot-mongodb:
+    build:
+      context: setup/mongo-docker
+    image: mazurokandrii/secret-friend-bot-mongodb:${BOT_VERSION:?err}
+    container_name: secret-friend-bot-mongodb
+    tty: true
+    ports:
+      - "${MONGODB_PORT}:${MONGODB_PORT}"
+    stdin_open: true
+    networks:
+      secret-friend-bot-network:
+
+  secret-friend-bot-mongodb-migration:
+    build:
+      context: setup/mongo-migration
+    image: mazurokandrii/secret-friend-bot-mongodb-migration:${BOT_VERSION:?err}
+    container_name: secret-friend-bot-mongodb-migration
+    depends_on:
+      - secret-friend-bot-mongodb
+    environment:
+      DB_HOST: ${MONGODB_HOST}
+      DB_PORT: ${MONGODB_PORT}
+      MONGO_DB: ${MONGO_DB}
+    networks:
+      secret-friend-bot-network:
+
+networks:
+  secret-friend-bot-network:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.0.11.0/24
