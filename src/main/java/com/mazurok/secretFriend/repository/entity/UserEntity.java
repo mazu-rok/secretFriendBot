@@ -27,9 +27,14 @@ public class UserEntity {
     private Integer age;
     private String city;
     private Stage stage;
-    private Boolean stageState;
+    private StagePart stagePart;
     @Builder.Default
     private Date createdAt = Calendar.getInstance(TimeZone.getDefault()).getTime();
     private Date updatedAt;
     private Date deletedAt;
+
+    private UserEntity secretFriend;
+    @Builder.Default
+    private SecretFriendConfig secretFriendConfig = new SecretFriendConfig();
+
 }
