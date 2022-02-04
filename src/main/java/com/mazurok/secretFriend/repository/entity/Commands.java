@@ -12,7 +12,10 @@ public enum Commands {
     CONFIGURE_SECRET_FRIEND_PROFILE("/cmd: Configure profile for your secret friend"),
     CHANGE_SECRET_FRIEND_GENDER("/cmd: Change gender for your secret friend"),
     CHANGE_SECRET_FRIEND_AGE("/cmd: Change age for your secret friend"),
-    CHANGE_SECRET_FRIEND_CITY("/cmd: Change city for your secret friend");
+    CHANGE_SECRET_FRIEND_CITY("/cmd: Change city for your secret friend"),
+
+    GET_RANDOM_FRIEND("/cmd: Get random secret friend"),
+    START_AUTOMATIC_SEARCH("/cmd: Start automatic search for a secret friend");
 
     public final String command;
 

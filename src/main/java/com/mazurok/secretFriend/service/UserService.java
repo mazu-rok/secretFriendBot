@@ -7,9 +7,13 @@ import com.mazurok.secretFriend.repository.entity.StagePart;
 import com.mazurok.secretFriend.repository.entity.UserEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.*;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.objects.Update;
 
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 import static com.mazurok.secretFriend.repository.entity.Stage.*;
@@ -18,17 +22,24 @@ import static com.mazurok.secretFriend.repository.entity.StagePart.*;
 @Slf4j
 @Service
 public class UserService {
+    private final MongoTemplate mongoTemplate;
+
     private final UserRepository userRepository;
     private final MessageService messageService;
 
     @Autowired
-    public UserService(UserRepository userRepository,
+    public UserService(MongoTemplate mongoTemplate,
+                       UserRepository userRepository,
                        MessageService messageService) {
+        this.mongoTemplate = mongoTemplate;
         this.userRepository = userRepository;
         this.messageService = messageService;
     }
 
-    public UserEntity getUserByUpdate(Update update) {
+    public UserEntity getUserByUpdate(Update update) throws IllegalInputException {
+        if (!update.hasCallbackQuery() && !update.hasMessage()) {
+            throw new IllegalInputException("Message is not correct");
+        }
         Long userId = update.hasCallbackQuery() ? update.getCallbackQuery().getFrom().getId() : update.getMessage().getFrom().getId();
         Long chatId = update.hasCallbackQuery() ? update.getCallbackQuery().getMessage().getChatId() : update.getMessage().getChatId();
         Optional<UserEntity> user = userRepository.findById(userId);
@@ -225,5 +236,43 @@ public class UserService {
             resultMessage = messageService.createSecretFriendConfigFinishedMessage(user, update.getCallbackQuery().getId());
         }
         return resultMessage;
+    }
+
+    public Object getRandomUser(UserEntity user) {
+        SampleOperation matchStage = Aggregation.sample(1);
+        MatchOperation removeUser = Aggregation.match(Criteria.where("_id").ne(user.getId()));
+        Aggregation aggregation = Aggregation.newAggregation(removeUser, matchStage);
+        AggregationResults<UserEntity> output = mongoTemplate.aggregate(aggregation, "users", UserEntity.class);
+        UserEntity randomUser = output.getUniqueMappedResult();
+        if(randomUser == null) {
+            throw new NoSuchElementException("Random user not found");
+        }
+
+        user.setSecretFriend(randomUser);
+        userRepository.save(user);
+        return messageService.createFoundUserRepresentationMessage(randomUser, user.getChatId());
+    }
+
+    public Object sendMessagingRequest(UserEntity user) {
+        user.setStage(MESSAGE_REQUEST);
+        user.getSecretFriend().setStage(MESSAGE_REQUEST);
+        userRepository.save(user);
+        return messageService.createMessagingRequest(user, user.getSecretFriend());
+    }
+
+    public Object setSecretFriend(UserEntity user, UserEntity secretFriend) {
+        user.setStage(MESSAGING);
+        userRepository.save(user);
+
+        secretFriend.setStage(MESSAGING);
+        userRepository.save(secretFriend);
+        return messageService.createStartMessagingMessage(user.getChatId());
+    }
+
+    public Object removeSecretFriend(UserEntity user) {
+        user.setStage(CHOOSE_FRIEND);
+        userRepository.save(user);
+
+        return messageService.createSavedMessage(user.getChatId());
     }
 }

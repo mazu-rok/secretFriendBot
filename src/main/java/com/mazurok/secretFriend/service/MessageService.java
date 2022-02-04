@@ -50,10 +50,11 @@ public class MessageService {
 
     private final static String askSecretFriendGenderMessage = "Please set gender of your friend";
 
-    private final static String secretFriendConfigFinished = """
-            Your Secret Friend profile configured:
+    private final String secretFriendConfigFinished = "Your Secret Friend profile configured:\n" + userRepresentationMessage;
+
+    private final static String userRepresentationMessage = """
             Gender: %s
-            Age: %s-%s
+            Age: %s
             City: %s
             """;
 
@@ -166,6 +167,45 @@ public class MessageService {
                         user.getSecretFriendConfig().getMinAge(), user.getSecretFriendConfig().getMaxAge(),
                         user.getSecretFriendConfig().getCity()))
                 .showAlert(true)
+                .build();
+    }
+
+    public SendMessage createFoundUserRepresentationMessage(UserEntity user, Long chatId) {
+        List<List<InlineKeyboardButton>> actionButtons = new ArrayList<>();
+        List<InlineKeyboardButton> actionButtonsLine1 = new ArrayList<>();
+        actionButtonsLine1.add(InlineKeyboardButton.builder().text("Start messaging").callbackData("Apply:%s".formatted(user.getId())).build());
+        actionButtonsLine1.add(InlineKeyboardButton.builder().text("Next").callbackData("Next:%s".formatted(user.getId())).build());
+        actionButtons.add(actionButtonsLine1);
+        InlineKeyboardMarkup markupKeyboard = new InlineKeyboardMarkup();
+        markupKeyboard.setKeyboard(actionButtons);
+
+        return SendMessage.builder()
+                .chatId(String.valueOf(chatId))
+                .text("This is a random user from our bot:\n" + userRepresentationMessage.formatted(user.getGender(), user.getAge(), user.getCity()))
+                .replyMarkup(markupKeyboard)
+                .build();
+    }
+
+    public SendMessage createStartMessagingMessage(Long chatId) {
+        return SendMessage.builder()
+                .chatId(String.valueOf(chatId))
+                .text("Now you can start messaging with your friend!")
+                .build();
+    }
+
+    public SendMessage createMessagingRequest(UserEntity user, UserEntity secretFriend) {
+        List<List<InlineKeyboardButton>> actionButtons = new ArrayList<>();
+        List<InlineKeyboardButton> actionButtonsLine1 = new ArrayList<>();
+        actionButtonsLine1.add(InlineKeyboardButton.builder().text("Accept").callbackData("Accept").build());
+        actionButtonsLine1.add(InlineKeyboardButton.builder().text("Decline").callbackData("Decline").build());
+        actionButtons.add(actionButtonsLine1);
+        InlineKeyboardMarkup markupKeyboard = new InlineKeyboardMarkup();
+        markupKeyboard.setKeyboard(actionButtons);
+
+        return SendMessage.builder()
+                .chatId(String.valueOf(secretFriend.getChatId()))
+                .text("This user wants to send you a message\n" + userRepresentationMessage.formatted(user.getGender(), user.getAge(), user.getCity()))
+                .replyMarkup(markupKeyboard)
                 .build();
     }
 }

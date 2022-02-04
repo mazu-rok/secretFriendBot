@@ -2,6 +2,7 @@ package com.mazurok.secretFriend.repository.entity;
 
 import lombok.*;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.DBRef;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.util.Calendar;
@@ -33,6 +34,8 @@ public class UserEntity {
     private Date updatedAt;
     private Date deletedAt;
 
+    @DBRef(lazy = true)
+    @ToString.Exclude
     private UserEntity secretFriend;
     @Builder.Default
     private SecretFriendConfig secretFriendConfig = new SecretFriendConfig();
