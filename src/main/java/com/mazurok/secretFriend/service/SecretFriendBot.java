@@ -2,9 +2,7 @@ package com.mazurok.secretFriend.service;
 
 import com.mazurok.secretFriend.exceptions.IllegalInputException;
 import com.mazurok.secretFriend.repository.entity.Commands;
-import com.mazurok.secretFriend.repository.entity.StagePart;
 import com.mazurok.secretFriend.repository.entity.UserEntity;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,14 +12,12 @@ import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendSticker;
 import org.telegram.telegrambots.meta.api.methods.send.SendVoice;
-import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static com.mazurok.secretFriend.repository.entity.Stage.*;
@@ -32,19 +28,22 @@ public class SecretFriendBot extends TelegramLongPollingBot {
     private final String botUsername;
     private final String token;
 
-    private final MessageService messageService;
     private final UserService userService;
+    private final UserConfigService userConfigService;
+    private final MessagingService messagingService;
 
     @Autowired
     public SecretFriendBot(@Value("${secret-friend.bot.name}") String botUsername,
                            @Value("${secret-friend.bot.token}") String token,
-                           MessageService messageService,
-                           UserService userService) {
+                           UserService userService,
+                           UserConfigService userConfigService,
+                           MessagingService messagingService) {
         this.botUsername = botUsername;
         this.token = token;
 
-        this.messageService = messageService;
         this.userService = userService;
+        this.userConfigService = userConfigService;
+        this.messagingService = messagingService;
     }
 
     @Override
@@ -57,223 +56,95 @@ public class SecretFriendBot extends TelegramLongPollingBot {
         return token;
     }
 
-    @SneakyThrows
     @Override
     public void onUpdateReceived(Update update) {
         // TODO: bot logic
-        UserEntity user = userService.getUserByUpdate(update);
+        UserEntity user;
+        List<Object> messages;
 
-        ReplyKeyboardMarkup buttons = null;
-
-        if (update.hasMessage() && update.getMessage().hasText() && update.getMessage().getText().startsWith("/")) {
-            Commands command;
-            try {
-                command = Commands.fromString(update.getMessage().getText());
-                switch (command) {
-                    case START -> {
-                        buttons = createMainButtons();
-                    }
-                    case CONFIGURE_PROFILE -> {
-                        sendMessage(messageService.createAskConfigProfileMessage(user.getChatId()), createConfigureProfileButtons());
-                        return;
-                    }
-                    case CHANGE_AGE -> {
-                        user.setStage(CONFIGURE_PROFILE);
-                        user.setStagePart(StagePart.ASK_AGE);
-                    }
-                    case CHANGE_CITY -> {
-                        user.setStage(CONFIGURE_PROFILE);
-                        user.setStagePart(StagePart.ASK_CITY);
-                    }
-                    case CHANGE_GENDER -> {
-                        user.setStage(CONFIGURE_PROFILE);
-                        user.setStagePart(StagePart.ASK_GENDER);
-                    }
-
-                    case CONFIGURE_SECRET_FRIEND_PROFILE -> {
-                        sendMessage(messageService.createAskConfigProfileMessage(user.getChatId()), createConfigureSecretFriendProfileButtons());
-                        return;
-                    }
-                    case CHANGE_SECRET_FRIEND_AGE -> {
-                        user.setStage(CONFIGURE_SECRET_FRIEND_PROFILE);
-                        user.setStagePart(StagePart.ASK_AGE);
-                    }
-                    case CHANGE_SECRET_FRIEND_CITY -> {
-                        user.setStage(CONFIGURE_SECRET_FRIEND_PROFILE);
-                        user.setStagePart(StagePart.ASK_CITY);
-                    }
-                    case CHANGE_SECRET_FRIEND_GENDER -> {
-                        user.setStage(CONFIGURE_SECRET_FRIEND_PROFILE);
-                        user.setStagePart(StagePart.ASK_GENDER);
-                    }
-
-                    case GET_RANDOM_FRIEND -> {
-                        user.setStage(CHOOSE_FRIEND);
-                    }
-                    case START_AUTOMATIC_SEARCH -> {
-                        user.setStage(AUTO_LOOKING_FOR_A_FRIEND);
-                    }
-                }
-            } catch (IllegalInputException e) {
-                log.error("Failed to parse command", e);
+        try {
+            user = userService.getUserByUpdate(update);
+            if (user == null) {
+                return;
             }
+
+            if (update.hasMessage() && update.getMessage().hasText() && (update.getMessage().getText().startsWith("/cmd")
+                    || update.getMessage().getText().equals("/start"))) {
+                messages = handleCommand(user, update);
+            } else {
+                messages = switch (user.getStage()) {
+                    case CONFIGURE_FULL_PROFILE, CONFIGURE_FULL_SECRET_FRIEND_PROFILE, CONFIGURE_PROFILE,
+                            CONFIGURE_SECRET_FRIEND_PROFILE -> userConfigService.handleConfigStage(user, update);
+                    case AUTO_LOOKING_FOR_A_FRIEND, CHOOSE_FRIEND, MESSAGE_REQUEST, MESSAGING -> messagingService.handleConfigStage(user, update);
+                    case NO_STAGE -> List.of(SendMessage.builder()
+                            .chatId(String.valueOf(user.getChatId()))
+                            .text("Use buttons to choose the action")
+                            .replyMarkup(createMainButtons())
+                            .build());
+                };
+            }
+        } catch (IllegalInputException e) {
+            log.error("Error", e);
+            return;
         }
-        Object message = null;
-
-        if (user.getStage().equals(CONFIGURE_FULL_PROFILE)) {
-            message = userService.userConfig(user, update);
-        }
-        if (user.getStage().equals(CONFIGURE_FULL_SECRET_FRIEND_PROFILE)) {
-            message = userService.userSecretFriendConfig(user, update);
-        }
-
-        if (user.getStage().equals(CONFIGURE_PROFILE)) {
-            message = switch (user.getStagePart()) {
-                case ASK_AGE -> userService.askUserAge(user);
-                case SET_AGE -> {
-                    buttons = createMainButtons();
-                    yield userService.setSecretFriendAge(user, update);
-                }
-                case ASK_CITY -> userService.askUserCity(user);
-                case SET_CITY -> {
-                    buttons = createMainButtons();
-                    yield userService.setSecretFriendCity(user, update);
-                }
-                case ASK_GENDER -> userService.askUserGender(user);
-                case SET_GENDER -> {
-                    buttons = createMainButtons();
-                    yield userService.setUserGender(user, update);
-                }
-                default -> null;
-            };
-        } else if (user.getStage().equals(CONFIGURE_SECRET_FRIEND_PROFILE)) {
-            message = switch (user.getStagePart()) {
-                case ASK_AGE -> userService.askSecretFriendAge(user);
-                case SET_AGE -> {
-                    buttons = createMainButtons();
-                    yield userService.setSecretFriendAge(user, update);
-                }
-                case ASK_CITY -> userService.askSecretFriendCity(user);
-                case SET_CITY -> {
-                    buttons = createMainButtons();
-                    yield userService.setSecretFriendCity(user, update);
-                }
-                case ASK_GENDER -> userService.askSecretFriendGender(user);
-                case SET_GENDER -> {
-                    buttons = createMainButtons();
-                    yield userService.setSecretFriendGender(user, update);
-                }
-                default -> null;
-            };
-        } else if (user.getStage().equals(CHOOSE_FRIEND)) {
-            if (update.hasCallbackQuery() && update.getCallbackQuery().getData().contains("Apply")) {
-                message = userService.sendMessagingRequest(user);
-            }
-            if (!update.hasCallbackQuery() || update.getCallbackQuery().getData().contains("Next")) {
-                message = userService.getRandomUser(user);
-            }
-        } else if (user.getStage().equals(MESSAGE_REQUEST)) {
-            if (update.hasCallbackQuery() && update.getCallbackQuery().getData().contains("Accept")) {
-                userService.setSecretFriend(user, user.getSecretFriend());
-            } else if (update.hasCallbackQuery() && update.getCallbackQuery().getData().contains("Decline")) {
-                userService.removeSecretFriend(user.getSecretFriend());
-            }
-        } else if (user.getStage().equals(MESSAGING)) {
-            if (update.getMessage().hasText()) {
-                message = SendMessage.builder()
-                        .text(update.getMessage().getText())
-                        .chatId(String.valueOf(user.getSecretFriend().getChatId()))
-                        .build();
-            } else if (update.getMessage().hasSticker()) {
-                message = SendSticker.builder()
-                        .chatId(String.valueOf(user.getChatId()))
-                        .sticker(new InputFile(update.getMessage().getSticker().getFileId()))
-                        .build();
-            } else if (update.getMessage().hasVoice()) {
-                message = SendVoice.builder()
-                        .chatId(String.valueOf(user.getChatId()))
-                        .voice(new InputFile(update.getMessage().getVoice().getFileId()))
-                        .build();
-            }
-        }
-
-        sendMessage(message, buttons);
+        sendMessage(messages);
     }
 
-    private void sendMessage(Object message, ReplyKeyboardMarkup buttons) {
-        if (message == null) {
+    private List<Object> handleCommand(UserEntity user, Update update) throws IllegalInputException {
+        Commands command;
+        command = Commands.fromString(update.getMessage().getText());
+        return switch (command) {
+            case START -> List.of(SendMessage.builder()
+                    .chatId(String.valueOf(user.getChatId()))
+                    .text("Hi, %s! Use one of following commands to continue" .formatted(user.getFirstName()))
+                    .replyMarkup(createMainButtons())
+                    .build());
+            case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE, SHOW_PROFILE -> userConfigService.handleConfigCommand(command, user, update);
+
+            case GET_RANDOM_FRIEND, START_AUTOMATIC_SEARCH -> messagingService.handleConfigCommand(command, user, update);
+        };
+    }
+
+    private void sendMessage(List<Object> messages) {
+        if (messages == null || messages.isEmpty()) {
             return;
         }
 
-        try {
-            if (message instanceof SendMessage msg) {
-                if (msg.getReplyMarkup() == null && buttons != null) {
-                    msg.setReplyMarkup(buttons);
+        for (Object message : messages) {
+            try {
+                if (message instanceof SendMessage text) {
+                    execute(text);
+                } else if (message instanceof AnswerCallbackQuery answer) {
+                    execute(answer);
+                } else if (message instanceof SendSticker sticker) {
+                    execute(sticker);
+                } else if (message instanceof SendVoice voice) {
+                    execute(voice);
                 }
-                execute(msg);
-            } else if (message instanceof AnswerCallbackQuery answer) {
-                execute(answer);
+            } catch (TelegramApiException e) {
+                log.error("Exception: {}", e.toString());
             }
-        } catch (TelegramApiException e) {
-            log.error("Exception: {}", e.toString());
         }
-    }
-
-    private ReplyKeyboardMarkup createConfigureProfileButtons() {
-        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
-        replyKeyboardMarkup.setSelective(true);
-        replyKeyboardMarkup.setResizeKeyboard(true);
-        replyKeyboardMarkup.setOneTimeKeyboard(true);
-
-        List<KeyboardRow> keyboard = new ArrayList<>();
-
-        KeyboardRow keyboardFirstRow = new KeyboardRow();
-        keyboardFirstRow.add(new KeyboardButton(Commands.CHANGE_AGE.command));
-        keyboardFirstRow.add(new KeyboardButton(Commands.CHANGE_GENDER.command));
-        keyboardFirstRow.add(new KeyboardButton(Commands.CHANGE_CITY.command));
-
-        keyboard.add(keyboardFirstRow);
-        replyKeyboardMarkup.setKeyboard(keyboard);
-        return replyKeyboardMarkup;
-    }
-
-    private ReplyKeyboardMarkup createConfigureSecretFriendProfileButtons() {
-        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
-        replyKeyboardMarkup.setSelective(true);
-        replyKeyboardMarkup.setResizeKeyboard(true);
-        replyKeyboardMarkup.setOneTimeKeyboard(true);
-
-        List<KeyboardRow> keyboard = new ArrayList<>();
-
-        KeyboardRow keyboardFirstRow = new KeyboardRow();
-        keyboardFirstRow.add(new KeyboardButton(Commands.CHANGE_SECRET_FRIEND_AGE.command));
-        keyboardFirstRow.add(new KeyboardButton(Commands.CHANGE_SECRET_FRIEND_GENDER.command));
-        keyboardFirstRow.add(new KeyboardButton(Commands.CHANGE_SECRET_FRIEND_CITY.command));
-
-        keyboard.add(keyboardFirstRow);
-        replyKeyboardMarkup.setKeyboard(keyboard);
-        return replyKeyboardMarkup;
     }
 
     private ReplyKeyboardMarkup createMainButtons() {
         ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
         replyKeyboardMarkup.setSelective(true);
         replyKeyboardMarkup.setResizeKeyboard(true);
-        replyKeyboardMarkup.setOneTimeKeyboard(false);
+        replyKeyboardMarkup.setOneTimeKeyboard(true);
 
-        List<KeyboardRow> keyboard = new ArrayList<>();
+        KeyboardRow keyboardRow1 = new KeyboardRow();
+        keyboardRow1.add(new KeyboardButton(Commands.CONFIGURE_PROFILE.command));
+        keyboardRow1.add(new KeyboardButton(Commands.CONFIGURE_SECRET_FRIEND_PROFILE.command));
 
-        KeyboardRow keyboardFirstRow = new KeyboardRow();
-        keyboardFirstRow.add(new KeyboardButton(Commands.CONFIGURE_PROFILE.command));
-        keyboardFirstRow.add(new KeyboardButton(Commands.CONFIGURE_SECRET_FRIEND_PROFILE.command));
+        KeyboardRow keyboardRow2 = new KeyboardRow();
+        keyboardRow2.add(new KeyboardButton(Commands.SHOW_PROFILE.command));
 
-        KeyboardRow keyboardSecondtRow = new KeyboardRow();
-        keyboardSecondtRow.add(new KeyboardButton(Commands.GET_RANDOM_FRIEND.command));
-        keyboardSecondtRow.add(new KeyboardButton(Commands.START_AUTOMATIC_SEARCH.command));
+        KeyboardRow keyboardRow3 = new KeyboardRow();
+        keyboardRow3.add(new KeyboardButton(Commands.GET_RANDOM_FRIEND.command));
+//        keyboardRow3.add(new KeyboardButton(Commands.START_AUTOMATIC_SEARCH.command));
 
-        keyboard.add(keyboardFirstRow);
-        keyboard.add(keyboardSecondtRow);
-        replyKeyboardMarkup.setKeyboard(keyboard);
+        replyKeyboardMarkup.setKeyboard(List.of(keyboardRow1, keyboardRow2, keyboardRow3));
         return replyKeyboardMarkup;
     }
 }
