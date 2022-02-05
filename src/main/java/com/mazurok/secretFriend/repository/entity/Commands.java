@@ -2,6 +2,7 @@ package com.mazurok.secretFriend.repository.entity;
 
 import com.mazurok.secretFriend.exceptions.IllegalInputException;
 
+// TODO: localize commands
 public enum Commands {
     START("/start"),
     CONFIGURE_PROFILE("/cmd: Configure profile"),

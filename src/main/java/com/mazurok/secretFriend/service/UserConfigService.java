@@ -2,12 +2,10 @@ package com.mazurok.secretFriend.service;
 
 import com.mazurok.secretFriend.exceptions.IllegalInputException;
 import com.mazurok.secretFriend.repository.UserRepository;
-import com.mazurok.secretFriend.repository.entity.Commands;
-import com.mazurok.secretFriend.repository.entity.Gender;
-import com.mazurok.secretFriend.repository.entity.StagePart;
-import com.mazurok.secretFriend.repository.entity.UserEntity;
+import com.mazurok.secretFriend.repository.entity.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.MessageSource;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -18,6 +16,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 import static com.mazurok.secretFriend.repository.entity.Stage.*;
 import static com.mazurok.secretFriend.repository.entity.StagePart.*;
@@ -27,23 +26,26 @@ import static com.mazurok.secretFriend.repository.entity.StagePart.NO_ACTION;
 @Service
 public class UserConfigService {
     private final UserRepository userRepository;
+    private final MessageSource messageSource;
 
     @Autowired
-    public UserConfigService(UserRepository userRepository) {
+    public UserConfigService(UserRepository userRepository,
+                             MessageSource messageSource) {
         this.userRepository = userRepository;
+        this.messageSource = messageSource;
     }
 
-    public List<Object> handleConfigCommand(Commands command, UserEntity user, Update update) {
+    public List<Object> handleConfigCommand(Commands command, UserEntity user) {
         List<Object> messages = new ArrayList<>();
 
         switch (command) {
             case CONFIGURE_PROFILE -> {
-                messages.add(createAskConfigProfileMessage(user.getChatId()));
+                messages.add(createAskConfigProfileMessage(user.getChatId(), user.getLanguage()));
                 user.setStage(CONFIGURE_PROFILE);
                 userRepository.save(user);
             }
             case CONFIGURE_SECRET_FRIEND_PROFILE -> {
-                messages.add(createAskConfigProfileMessage(user.getChatId()));
+                messages.add(createAskConfigProfileMessage(user.getChatId(), user.getLanguage()));
                 user.setStage(CONFIGURE_SECRET_FRIEND_PROFILE);
                 userRepository.save(user);
             }
@@ -97,17 +99,17 @@ public class UserConfigService {
             user.setStage(NO_STAGE);
             user.setStagePart(NO_ACTION);
             userRepository.save(user);
-            return List.of(createSavedMessage(user.getChatId()));
+            return List.of(createSavedMessage(user.getChatId(), user.getLanguage()));
         } catch (NumberFormatException e) {
             log.error("Failed to set user's age", e);
-            return List.of(createIncorrectUserAgeMessage(user.getChatId()));
+            return List.of(createIncorrectUserAgeMessage(user.getChatId(), user.getLanguage()));
         }
     }
 
     private List<Object> askUserAge(UserEntity user) {
         user.setStagePart(SET_AGE);
         userRepository.save(user);
-        return List.of(createAskUserAgeMessage(user.getChatId()));
+        return List.of(createAskUserAgeMessage(user.getChatId(), user.getLanguage()));
     }
 
     private List<Object> setUserCity(UserEntity user, Update update) {
@@ -116,13 +118,13 @@ public class UserConfigService {
         user.setStage(NO_STAGE);
         user.setStagePart(NO_ACTION);
         userRepository.save(user);
-        return List.of(createSavedMessage(user.getChatId()));
+        return List.of(createSavedMessage(user.getChatId(), user.getLanguage()));
     }
 
     private List<Object> askUserCity(UserEntity user) {
         user.setStagePart(SET_CITY);
         userRepository.save(user);
-        return List.of(createAskUserCityMessage(user.getChatId()));
+        return List.of(createAskUserCityMessage(user.getChatId(), user.getLanguage()));
     }
 
     private List<Object> setUserGender(UserEntity user, Update update) {
@@ -131,14 +133,14 @@ public class UserConfigService {
         user.setStage(NO_STAGE);
         user.setStagePart(NO_ACTION);
         userRepository.save(user);
-        return List.of(createSavedMessage(user.getChatId()),
+        return List.of(createSavedMessage(user.getChatId(), user.getLanguage()),
                 AnswerCallbackQuery.builder().callbackQueryId(update.getCallbackQuery().getId()).build());
     }
 
     private List<Object> askUserGender(UserEntity user) {
         user.setStagePart(SET_GENDER);
         userRepository.save(user);
-        return List.of(createAskUserGenderMessage(user.getChatId()));
+        return List.of(createAskUserGenderMessage(user.getChatId(), user.getLanguage()));
     }
 
 //    private List<Object> userConfig(UserEntity user, Update update) {
@@ -193,17 +195,17 @@ public class UserConfigService {
             user.setStage(NO_STAGE);
             user.setStagePart(NO_ACTION);
             userRepository.save(user);
-            return List.of(createSavedMessage(user.getChatId()));
+            return List.of(createSavedMessage(user.getChatId(), user.getLanguage()));
         } catch (NumberFormatException | IllegalInputException e) {
             log.error("Failed to set user's age", e);
-            return List.of(createIncorrectSecretFriendAgeMessage(user.getChatId()));
+            return List.of(createIncorrectSecretFriendAgeMessage(user.getChatId(), user.getLanguage()));
         }
     }
 
     private List<Object> askSecretFriendAge(UserEntity user) {
         user.setStagePart(SET_AGE);
         userRepository.save(user);
-        return List.of(createAskSecretFriendAgeMessage(user.getChatId()));
+        return List.of(createAskSecretFriendAgeMessage(user.getChatId(), user.getLanguage()));
     }
 
     private List<Object> setSecretFriendCity(UserEntity user, Update update) {
@@ -212,13 +214,13 @@ public class UserConfigService {
         user.setStage(NO_STAGE);
         user.setStagePart(NO_ACTION);
         userRepository.save(user);
-        return List.of(createSavedMessage(user.getChatId()));
+        return List.of(createSavedMessage(user.getChatId(), user.getLanguage()));
     }
 
     private List<Object> askSecretFriendCity(UserEntity user) {
         user.setStagePart(SET_CITY);
         userRepository.save(user);
-        return List.of(createAskSecretFriendCityMessage(user.getChatId()));
+        return List.of(createAskSecretFriendCityMessage(user.getChatId(), user.getLanguage()));
     }
 
     private List<Object> setSecretFriendGender(UserEntity user, Update update) {
@@ -227,14 +229,14 @@ public class UserConfigService {
         user.setStage(NO_STAGE);
         user.setStagePart(NO_ACTION);
         userRepository.save(user);
-        return List.of(createSavedMessage(user.getChatId()),
+        return List.of(createSavedMessage(user.getChatId(), user.getLanguage()),
                 AnswerCallbackQuery.builder().callbackQueryId(update.getCallbackQuery().getId()).build());
     }
 
     private List<Object> askSecretFriendGender(UserEntity user) {
         user.setStagePart(SET_GENDER);
         userRepository.save(user);
-        return List.of(createAskSecretFriendGenderMessage(user.getChatId()));
+        return List.of(createAskSecretFriendGenderMessage(user.getChatId(), user.getLanguage()));
     }
 
 //    public List<Object> userSecretFriendConfig(UserEntity user, Update update) {
@@ -273,87 +275,45 @@ public class UserConfigService {
      * Creating messages
      **/
 
-    // TODO: add localization
-    private static final String changeAge = "Change age";
-    private static final String changeCity = "Change city";
-    private static final String changeGender = "Change gender";
-    private final static String savedMessage = "Saved";
-    private final static String askAgeMessage = "Please set your age";
-    private final static String incorrectAgeMessage = "Use only numbers, for example: 21";
-
-    private final static String askCityMessage = """
-            Please set your city.
-            Use official english name, use wikipedia for example: Kyiv (NOT Kiev!)
-            It is important for automatic search""";
-
-    private final static String askGenderMessage = "Please set gender";
-    private final static String manGenderAnswerMessage = "Male";
-    private final static String womanGenderAnswerMessage = "Female";
-    private final static String anyGenderAnswerMessage = "Any";
-    private final static String askWhatChangeMessage = "What do you want to change?";
-
-//    private final static String userConfigFinished = """
-//            Your profile configured:
-//            First Name: %s
-//            Last Name: %s
-//            Gender: %s
-//            Age: %s
-//            City: %s
-//            """;
-
-    /**
-     * Text for secret friend config
-     **/
-    private final static String askSecretFriendAgeMessage = "Please set age for your secret friend in format: minAge-maxAge. Example: 20-25";
-    private final static String incorrectSecretFriendAgeMessage = "Use only numbers, for example: 20-25";
-
-    private final static String askSecretFriendCityMessage = """
-            Please set your secret friend city.
-            Use official english name, you can use wikipedia to check correct name. For example: Kyiv (NOT Kiev!)
-            It is important for automatic search""";
-
-    private final static String askSecretFriendGenderMessage = "Please set gender of your friend";
-
-    private final static String secretFriendConfigFinished = """
-            Your Secret Friend profile configured:
-            Gender: %s
-            Age: %s-%s
-            City: %s
-            """;
-
-    private SendMessage createSavedMessage(Long chatId) {
+    private SendMessage createSavedMessage(Long chatId, Language lang) {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(savedMessage)
+                .text(messageSource.getMessage("saved_msg",null, new Locale(lang.name())))
                 .build();
     }
 
-    private SendMessage createAskUserAgeMessage(Long chatId) {
+    private SendMessage createAskUserAgeMessage(Long chatId, Language lang) {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(askAgeMessage)
+                .text(messageSource.getMessage("ask_age_msg",null, new Locale(lang.name())))
                 .build();
     }
 
-    private SendMessage createIncorrectUserAgeMessage(Long chatId) {
+    private SendMessage createIncorrectUserAgeMessage(Long chatId, Language lang) {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(incorrectAgeMessage)
+                .text(messageSource.getMessage("incorrect_age_msg",null, new Locale(lang.name())))
                 .build();
     }
 
-    private SendMessage createAskUserCityMessage(Long chatId) {
+    private SendMessage createAskUserCityMessage(Long chatId, Language lang) {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(askCityMessage)
+                .text(messageSource.getMessage("ask_city_msg",null, new Locale(lang.name())))
                 .build();
     }
 
-    private SendMessage createAskUserGenderMessage(Long chatId) {
+    private SendMessage createAskUserGenderMessage(Long chatId, Language lang) {
         List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
         List<InlineKeyboardButton> buttons1 = new ArrayList<>();
-        buttons1.add(InlineKeyboardButton.builder().text(manGenderAnswerMessage).callbackData(Gender.MALE.name()).build());
-        buttons1.add(InlineKeyboardButton.builder().text(womanGenderAnswerMessage).callbackData(Gender.FEMALE.name()).build());
+        buttons1.add(InlineKeyboardButton.builder()
+                .text(messageSource.getMessage("man_gender_answer_msg",null, new Locale(lang.name())))
+                .callbackData(Gender.MALE.name())
+                .build());
+        buttons1.add(InlineKeyboardButton.builder()
+                .text(messageSource.getMessage("woman_gender_answer_msg",null, new Locale(lang.name())))
+                .callbackData(Gender.FEMALE.name())
+                .build());
         buttons.add(buttons1);
 
         InlineKeyboardMarkup markupKeyboard = new InlineKeyboardMarkup();
@@ -361,26 +321,32 @@ public class UserConfigService {
 
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(askGenderMessage)
+                .text(messageSource.getMessage("ask_gender_msg",null, new Locale(lang.name())))
                 .replyMarkup(markupKeyboard)
                 .build();
     }
 
-    private SendMessage createAskConfigProfileMessage(Long chatId) {
+    private SendMessage createAskConfigProfileMessage(Long chatId, Language lang) {
         List<List<InlineKeyboardButton>> actions = new ArrayList<>();
         List<InlineKeyboardButton> actionsLine1 = new ArrayList<>();
         List<InlineKeyboardButton> actionsLine2 = new ArrayList<>();
         List<InlineKeyboardButton> actionsLine3 = new ArrayList<>();
-        actionsLine1.add(InlineKeyboardButton.builder().text(changeAge).callbackData(ASK_AGE.name()).build());
-        actionsLine2.add(InlineKeyboardButton.builder().text(changeCity).callbackData(ASK_CITY.name()).build());
-        actionsLine3.add(InlineKeyboardButton.builder().text(changeGender).callbackData(ASK_GENDER.name()).build());
+        actionsLine1.add(InlineKeyboardButton.builder()
+                .text(messageSource.getMessage("change_age_msg",null, new Locale(lang.name())))
+                .callbackData(ASK_AGE.name()).build());
+        actionsLine2.add(InlineKeyboardButton.builder()
+                .text(messageSource.getMessage("change_city_msg",null, new Locale(lang.name())))
+                .callbackData(ASK_CITY.name()).build());
+        actionsLine3.add(InlineKeyboardButton.builder()
+                .text(messageSource.getMessage("change_gender_msg",null, new Locale(lang.name())))
+                .callbackData(ASK_GENDER.name()).build());
         actions.add(actionsLine1);
         actions.add(actionsLine2);
         actions.add(actionsLine3);
 
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(askWhatChangeMessage)
+                .text(messageSource.getMessage("ask_what_change_msg",null, new Locale(lang.name())))
                 .replyMarkup(new InlineKeyboardMarkup(actions))
                 .build();
     }
@@ -388,15 +354,8 @@ public class UserConfigService {
     private SendMessage createShowProfileMessage(UserEntity user) {
         return SendMessage.builder()
                 .chatId(String.valueOf(user.getChatId()))
-                .text("""
-                        This is your profile:
-                        First name: %s
-                        Last name: %s
-                        Age: %s
-                        City: %s
-                        Gender: %s
-                        """.formatted(user.getFirstName(), user.getLastName(), user.getAge(),
-                        user.getCity(), user.getGender()))
+                .text(messageSource.getMessage("show_profile_msg", List.of(user.getFirstName(), user.getLastName(),
+                        user.getAge(), user.getCity(), user.getGender()).toArray(), new Locale(user.getLanguage().name())))
                 .build();
     }
 
@@ -404,33 +363,39 @@ public class UserConfigService {
     /**
      * Messages for secret friend config
      **/
-    private SendMessage createAskSecretFriendAgeMessage(Long chatId) {
+    private SendMessage createAskSecretFriendAgeMessage(Long chatId, Language lang) {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(askSecretFriendAgeMessage)
+                .text(messageSource.getMessage("ask_secret_friend_age_msg",null, new Locale(lang.name())))
                 .build();
     }
 
-    public SendMessage createIncorrectSecretFriendAgeMessage(Long chatId) {
+    public SendMessage createIncorrectSecretFriendAgeMessage(Long chatId, Language lang) {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(incorrectSecretFriendAgeMessage)
+                .text(messageSource.getMessage("incorrect_secret_friend_age_msg",null, new Locale(lang.name())))
                 .build();
     }
 
-    public SendMessage createAskSecretFriendCityMessage(Long chatId) {
+    public SendMessage createAskSecretFriendCityMessage(Long chatId, Language lang) {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(askSecretFriendCityMessage)
+                .text(messageSource.getMessage("ask_secret_friend_city_msg",null, new Locale(lang.name())))
                 .build();
     }
 
-    public SendMessage createAskSecretFriendGenderMessage(Long chatId) {
+    public SendMessage createAskSecretFriendGenderMessage(Long chatId, Language lang) {
         List<List<InlineKeyboardButton>> genderButtons = new ArrayList<>();
         List<InlineKeyboardButton> genderButtonsLine1 = new ArrayList<>();
-        genderButtonsLine1.add(InlineKeyboardButton.builder().text(manGenderAnswerMessage).callbackData(Gender.MALE.name()).build());
-        genderButtonsLine1.add(InlineKeyboardButton.builder().text(womanGenderAnswerMessage).callbackData(Gender.FEMALE.name()).build());
-        genderButtonsLine1.add(InlineKeyboardButton.builder().text(anyGenderAnswerMessage).callbackData(Gender.ANY.name()).build());
+        genderButtonsLine1.add(InlineKeyboardButton.builder()
+                .text(messageSource.getMessage("man_gender_answer_msg",null, new Locale(lang.name())))
+                .callbackData(Gender.MALE.name()).build());
+        genderButtonsLine1.add(InlineKeyboardButton.builder()
+                .text(messageSource.getMessage("woman_gender_answer_msg",null, new Locale(lang.name())))
+                .callbackData(Gender.FEMALE.name()).build());
+        genderButtonsLine1.add(InlineKeyboardButton.builder()
+                .text(messageSource.getMessage("any_gender_answer_msg",null, new Locale(lang.name())))
+                .callbackData(Gender.ANY.name()).build());
         genderButtons.add(genderButtonsLine1);
 
         InlineKeyboardMarkup markupKeyboard = new InlineKeyboardMarkup();
@@ -438,19 +403,21 @@ public class UserConfigService {
 
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(askSecretFriendGenderMessage)
+                .text(messageSource.getMessage("ask_secret_Friend_gender_msg",null, new Locale(lang.name())))
                 .replyMarkup(markupKeyboard)
                 .build();
     }
 
-    public AnswerCallbackQuery createSecretFriendConfigFinishedMessage(UserEntity user, String callbackId) {
-        return AnswerCallbackQuery.builder()
-                .callbackQueryId(callbackId)
-                .text(String.format(secretFriendConfigFinished, user.getSecretFriendConfig().getGender(),
-                        user.getSecretFriendConfig().getMinAge(), user.getSecretFriendConfig().getMaxAge(),
-                        user.getSecretFriendConfig().getCity()))
-                .showAlert(true)
-                .build();
-    }
+//    public AnswerCallbackQuery createSecretFriendConfigFinishedMessage(UserEntity user, String callbackId) {
+//        return AnswerCallbackQuery.builder()
+//                .callbackQueryId(callbackId)
+//                .text(messageSource.getMessage("any_gender_answer_msg",null, new Locale(lang.name()))
+//
+//                        String.format(secretFriendConfigFinished, user.getSecretFriendConfig().getGender(),
+//                        user.getSecretFriendConfig().getMinAge(), user.getSecretFriendConfig().getMaxAge(),
+//                        user.getSecretFriendConfig().getCity()))
+//                .showAlert(true)
+//                .build();
+//    }
 
 }

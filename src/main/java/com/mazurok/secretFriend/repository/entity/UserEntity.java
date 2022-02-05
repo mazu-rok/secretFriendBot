@@ -29,6 +29,7 @@ public class UserEntity {
     private String city;
     private Stage stage;
     private StagePart stagePart;
+    private Language language;
     @Builder.Default
     private Date createdAt = Calendar.getInstance(TimeZone.getDefault()).getTime();
     private Date updatedAt;

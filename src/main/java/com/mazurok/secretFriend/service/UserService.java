@@ -2,6 +2,7 @@ package com.mazurok.secretFriend.service;
 
 import com.mazurok.secretFriend.exceptions.IllegalInputException;
 import com.mazurok.secretFriend.repository.UserRepository;
+import com.mazurok.secretFriend.repository.entity.Language;
 import com.mazurok.secretFriend.repository.entity.StagePart;
 import com.mazurok.secretFriend.repository.entity.UserEntity;
 import lombok.extern.slf4j.Slf4j;
@@ -62,6 +63,7 @@ public class UserService {
                 .chatId(chatId)
                 .stage(NO_STAGE)
                 .stagePart(StagePart.NO_ACTION)
+                .language(Language.valueOf(user.getLanguageCode()))
                 .build();
         userRepository.save(userEntity);
         return userEntity;
