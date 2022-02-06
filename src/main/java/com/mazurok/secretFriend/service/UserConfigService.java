@@ -332,13 +332,13 @@ public class UserConfigService {
         List<InlineKeyboardButton> actionsLine2 = new ArrayList<>();
         List<InlineKeyboardButton> actionsLine3 = new ArrayList<>();
         actionsLine1.add(InlineKeyboardButton.builder()
-                .text(messageSource.getMessage("change_age_msg",null, new Locale(lang.name())))
+                .text(messageSource.getMessage("change_age_btn_msg",null, new Locale(lang.name())))
                 .callbackData(ASK_AGE.name()).build());
         actionsLine2.add(InlineKeyboardButton.builder()
-                .text(messageSource.getMessage("change_city_msg",null, new Locale(lang.name())))
+                .text(messageSource.getMessage("change_city_btn_msg",null, new Locale(lang.name())))
                 .callbackData(ASK_CITY.name()).build());
         actionsLine3.add(InlineKeyboardButton.builder()
-                .text(messageSource.getMessage("change_gender_msg",null, new Locale(lang.name())))
+                .text(messageSource.getMessage("change_gender_btn_msg",null, new Locale(lang.name())))
                 .callbackData(ASK_GENDER.name()).build());
         actions.add(actionsLine1);
         actions.add(actionsLine2);
