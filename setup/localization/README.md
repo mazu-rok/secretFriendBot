@@ -4,5 +4,5 @@ This script converts .xlsx file with localization to separate file for each lang
 
 ### Usage: 
 ```
-python .\create_localization_files.py .\Wishhy_localization.xlsx
+python .\create_localization_files.py .\secret_bot_localization.xlsx
 ```

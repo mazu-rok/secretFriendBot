@@ -2,6 +2,7 @@ package com.mazurok.secretFriend.service;
 
 import com.mazurok.secretFriend.exceptions.IllegalInputException;
 import com.mazurok.secretFriend.repository.entity.Commands;
+import com.mazurok.secretFriend.repository.entity.Language;
 import com.mazurok.secretFriend.repository.entity.UserEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -85,7 +86,7 @@ public class SecretFriendBot extends TelegramLongPollingBot {
                             .chatId(String.valueOf(user.getChatId()))
                             .text(messageSource.getMessage("no_stage_msg",
                                     List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
-                            .replyMarkup(createMainButtons())
+                            .replyMarkup(createMainButtons(user))
                             .build());
                 };
             }
@@ -104,7 +105,7 @@ public class SecretFriendBot extends TelegramLongPollingBot {
                     .chatId(String.valueOf(user.getChatId()))
                     .text(messageSource.getMessage("hello_msg",
                             List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
-                    .replyMarkup(createMainButtons())
+                    .replyMarkup(createMainButtons(user))
                     .build());
             case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE, SHOW_PROFILE ->
                     userConfigService.handleConfigCommand(command, user);
@@ -134,21 +135,29 @@ public class SecretFriendBot extends TelegramLongPollingBot {
         }
     }
 
-    private ReplyKeyboardMarkup createMainButtons() {
+    private ReplyKeyboardMarkup createMainButtons(UserEntity user) {
         ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
         replyKeyboardMarkup.setSelective(true);
         replyKeyboardMarkup.setResizeKeyboard(true);
         replyKeyboardMarkup.setOneTimeKeyboard(true);
 
         KeyboardRow keyboardRow1 = new KeyboardRow();
-        keyboardRow1.add(new KeyboardButton(Commands.CONFIGURE_PROFILE.command));
-        keyboardRow1.add(new KeyboardButton(Commands.CONFIGURE_SECRET_FRIEND_PROFILE.command));
+        keyboardRow1.add(new KeyboardButton(
+                Commands.CONFIGURE_PROFILE.command.getOrDefault(user.getLanguage().name(),
+                        Commands.CONFIGURE_PROFILE.command.get(Language.en.name()))));
+        keyboardRow1.add(new KeyboardButton(
+                Commands.CONFIGURE_SECRET_FRIEND_PROFILE.command.getOrDefault(user.getLanguage().name(),
+                        Commands.CONFIGURE_SECRET_FRIEND_PROFILE.command.get(Language.en.name()))));
 
         KeyboardRow keyboardRow2 = new KeyboardRow();
-        keyboardRow2.add(new KeyboardButton(Commands.SHOW_PROFILE.command));
+        keyboardRow2.add(new KeyboardButton(
+                Commands.SHOW_PROFILE.command.getOrDefault(user.getLanguage().name(),
+                    Commands.SHOW_PROFILE.command.get(Language.en.name()))));
 
         KeyboardRow keyboardRow3 = new KeyboardRow();
-        keyboardRow3.add(new KeyboardButton(Commands.GET_RANDOM_FRIEND.command));
+        keyboardRow3.add(new KeyboardButton(
+                Commands.GET_RANDOM_FRIEND.command.getOrDefault(user.getLanguage().name(),
+                    Commands.GET_RANDOM_FRIEND.command.get(Language.en.name()))));
 //        keyboardRow3.add(new KeyboardButton(Commands.START_AUTOMATIC_SEARCH.command));
 
         replyKeyboardMarkup.setKeyboard(List.of(keyboardRow1, keyboardRow2, keyboardRow3));
