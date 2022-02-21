@@ -20,6 +20,7 @@ public class UserRepositoryCustomImpl implements UserRepositoryCustom {
         this.mongoTemplate = mongoTemplate;
     }
 
+    //TODO: find only available user
     @Override
     public UserEntity findRandomUserByIdNot(Long id) {
         SampleOperation matchStage = Aggregation.sample(1);

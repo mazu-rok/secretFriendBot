@@ -3,10 +3,12 @@ package com.mazurok.secretFriend.service;
 import com.mazurok.secretFriend.repository.UserRepository;
 import com.mazurok.secretFriend.repository.entity.Commands;
 import com.mazurok.secretFriend.repository.entity.Language;
+import com.mazurok.secretFriend.repository.entity.StagePart;
 import com.mazurok.secretFriend.repository.entity.UserEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
+import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendSticker;
@@ -16,10 +18,7 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 import static com.mazurok.secretFriend.repository.entity.Stage.*;
 import static com.mazurok.secretFriend.repository.entity.Stage.MESSAGING;
@@ -30,12 +29,15 @@ import static com.mazurok.secretFriend.repository.entity.StagePart.*;
 public class MessagingService {
     private final UserRepository userRepository;
     private final MessageSource messageSource;
+    private final ButtonsService buttonsService;
 
     @Autowired
     public MessagingService(UserRepository userRepository,
-                            MessageSource messageSource) {
+                            MessageSource messageSource,
+                            ButtonsService buttonsService) {
         this.userRepository = userRepository;
         this.messageSource = messageSource;
+        this.buttonsService = buttonsService;
     }
 
     public List<Object> handleConfigCommand(Commands command, UserEntity user) {
@@ -43,36 +45,40 @@ public class MessagingService {
 
         switch (command) {
             case GET_RANDOM_FRIEND -> {
-                user.setStage(CHOOSE_FRIEND);
+                user.getStages().add(Pair.of(CHOOSE_FRIEND, NO_ACTION));
                 userRepository.save(user);
                 messages.addAll(getRandomUser(user));
             }
             case START_AUTOMATIC_SEARCH -> {
 //                messages.addAll()
             }
+            case STOP_MESSAGING -> {
+                messages.addAll(stopMessaging(user));
+            }
+            case BLOCK_USER -> {
+
+            }
         }
         return messages;
     }
 
     public List<Object> handleConfigStage(UserEntity user, Update update) {
-        List<Object> messages = new ArrayList<>();
-
-        if (user.getStage().equals(CHOOSE_FRIEND)) {
-            if (update.hasCallbackQuery() && update.getCallbackQuery().getData().contains("Apply")) {
-                messages = sendMessagingRequest(user);
+        return switch (user.getStages().peek().getFirst()) {
+            case CHOOSE_FRIEND -> {
+                if (update.hasCallbackQuery() && update.getCallbackQuery().getData().contains("Apply")) {
+                    yield sendMessagingRequest(user);
+                } else if (!update.hasCallbackQuery() || update.getCallbackQuery().getData().contains("Next")) {
+                    yield getRandomUser(user);
+                } else {
+                    yield null; // send notification to choose a command
+                }
             }
-            if (!update.hasCallbackQuery() || update.getCallbackQuery().getData().contains("Next")) {
-                messages = getRandomUser(user);
-            }
-        } else if (user.getStage().equals(MESSAGE_REQUEST)) {
-            messages = switch (user.getStagePart()) {
+            case MESSAGE_REQUEST -> switch (user.getStages().peek().getSecond()) {
                 case MESSAGE_REQUEST_CONFIRMATION -> {
                     if (update.hasCallbackQuery() && update.getCallbackQuery().getData().contains("Apply")) {
                         yield applyMessagingRequest(user);
-                    } else if (update.hasCallbackQuery() && update.getCallbackQuery().getData().contains("Decline")) {
-                        yield declineMessagingRequest(user);
                     } else {
-                        yield null;
+                        yield declineMessagingRequest(user);
                     }
                 }
                 case MESSAGE_REQUEST_SENT -> {
@@ -84,25 +90,28 @@ public class MessagingService {
                 }
                 default -> null;
             };
-        } else if (user.getStage().equals(MESSAGING)) {
-            if (update.getMessage().hasText()) {
-                messages = List.of(SendMessage.builder()
-                        .text(update.getMessage().getText())
-                        .chatId(String.valueOf(user.getSecretFriend().getChatId()))
-                        .build());
-            } else if (update.getMessage().hasSticker()) {
-                messages = List.of(SendSticker.builder()
-                        .chatId(String.valueOf(user.getChatId()))
-                        .sticker(new InputFile(update.getMessage().getSticker().getFileId()))
-                        .build());
-            } else if (update.getMessage().hasVoice()) {
-                messages = List.of(SendVoice.builder()
-                        .chatId(String.valueOf(user.getChatId()))
-                        .voice(new InputFile(update.getMessage().getVoice().getFileId()))
-                        .build());
+            case MESSAGING -> {
+                if (update.getMessage().hasText()) {
+                    yield List.of(SendMessage.builder()
+                            .text(update.getMessage().getText())
+                            .chatId(String.valueOf(user.getSecretFriend().getChatId()))
+                            .build());
+                } else if (update.getMessage().hasSticker()) {
+                    yield List.of(SendSticker.builder()
+                            .chatId(String.valueOf(user.getSecretFriend().getChatId()))
+                            .sticker(new InputFile(update.getMessage().getSticker().getFileId()))
+                            .build());
+                } else if (update.getMessage().hasVoice()) {
+                    yield List.of(SendVoice.builder()
+                            .chatId(String.valueOf(user.getSecretFriend().getChatId()))
+                            .voice(new InputFile(update.getMessage().getVoice().getFileId()))
+                            .build());
+                } else {
+                    yield null;
+                }
             }
-        }
-        return messages;
+            default -> null;
+        };
     }
 
     public List<Object> getRandomUser(UserEntity user) {
@@ -117,51 +126,83 @@ public class MessagingService {
     }
 
     public List<Object> sendMessagingRequest(UserEntity user) {
-        user.setStage(MESSAGE_REQUEST);
-        user.setStagePart(MESSAGE_REQUEST_SENT);
+        user.getStages().add(Pair.of(MESSAGE_REQUEST, MESSAGE_REQUEST_SENT));
 
-        user.getSecretFriend().setStage(MESSAGE_REQUEST);
-        user.getSecretFriend().setStagePart(MESSAGE_REQUEST_CONFIRMATION);
+        user.getSecretFriend().getStages().add(Pair.of(MESSAGE_REQUEST, MESSAGE_REQUEST_CONFIRMATION));
         user.getSecretFriend().setSecretFriend(user);
 
-        userRepository.save(user);
         userRepository.save(user.getSecretFriend());
+        userRepository.save(user);
         return List.of(createMessagingRequest(user.getSecretFriend()), createMessagingRequestSent(user));
     }
 
     public List<Object> applyMessagingRequest(UserEntity user) {
-        user.setStage(MESSAGING);
-        user.setStagePart(NO_ACTION);
+        user.replaceLastStage(Pair.of(MESSAGING, NO_ACTION));
 
-        user.getSecretFriend().setStage(MESSAGING);
-        user.getSecretFriend().setStagePart(NO_ACTION);
+        user.getSecretFriend().replaceLastStage(Pair.of(MESSAGING, NO_ACTION));
 
-        userRepository.save(user);
         userRepository.save(user.getSecretFriend());
+        userRepository.save(user);
 
         return List.of(createStartMessagingMessage(user.getChatId(), user.getLanguage()),
                 createStartMessagingMessage(user.getSecretFriend().getChatId(), user.getSecretFriend().getLanguage()));
     }
 
     public List<Object> declineMessagingRequest(UserEntity user) {
-        user.getSecretFriend().setStage(CHOOSE_FRIEND);
-        user.getSecretFriend().setStagePart(NO_ACTION);
+        user.getStages().pop();
+        user.getSecretFriend().getStages().pop();
+
         userRepository.save(user.getSecretFriend());
+        userRepository.save(user);
 
         return List.of(createDeclineRequestMessage(user.getSecretFriend().getChatId(), user.getSecretFriend().getLanguage()));
     }
 
     public List<Object> cancelMessagingRequest(UserEntity user) {
-        user.setStage(CHOOSE_FRIEND);
-        user.setStagePart(NO_ACTION);
+        user.getStages().pop();
 
-        //FIXME: Change logic for message request, we shouldn't change secret friend entity
-        user.getSecretFriend().setStage(NO_STAGE);
-        user.getSecretFriend().setStagePart(NO_ACTION);
-        userRepository.save(user);
+        user.getSecretFriend().getStages().pop();
+
         userRepository.save(user.getSecretFriend());
+        userRepository.save(user);
 
         return getRandomUser(user);
+    }
+
+    public List<Object> stopMessaging(UserEntity user) {
+        UserEntity secFriend = user.getSecretFriend();
+
+        SendMessage canceledMessage = SendMessage.builder()
+                .text(messageSource.getMessage("messaging_canceled_friend", null,
+                        new Locale(secFriend.getLanguage().name())))
+                .chatId(String.valueOf(secFriend.getChatId()))
+                .replyMarkup(buttonsService.createMainButtons(secFriend))
+                .build();
+
+        SendMessage cancelMessage = SendMessage.builder()
+                .text(messageSource.getMessage("messaging_canceled", null, new Locale(user.getLanguage().name())))
+                .chatId(String.valueOf(user.getChatId()))
+                .replyMarkup(buttonsService.createMainButtons(user))
+                .build();
+
+        secFriend.setSecretFriend(null);
+        secFriend.getStages().removeAllElements();
+        secFriend.getStages().push(Pair.of(NO_STAGE, StagePart.NO_ACTION));
+        userRepository.save(secFriend);
+
+        user.setSecretFriend(null);
+        user.getStages().removeAllElements();
+        user.getStages().push(Pair.of(NO_STAGE, StagePart.NO_ACTION));
+        userRepository.save(user);
+
+        return List.of(canceledMessage, cancelMessage);
+    }
+
+    public List<Object> handleCancelCommand(UserEntity user) {
+        return List.of(SendMessage.builder()
+                .text(messageSource.getMessage("no_stage_msg",
+                        List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
+                .replyMarkup(buttonsService.createMainButtons(user)).build());
     }
 
     /**
@@ -172,10 +213,10 @@ public class MessagingService {
         List<List<InlineKeyboardButton>> actionButtons = new ArrayList<>();
         List<InlineKeyboardButton> actionButtonsLine1 = new ArrayList<>();
         actionButtonsLine1.add(InlineKeyboardButton.builder()
-                .text(messageSource.getMessage("start_messaging_btn_msg",null, new Locale(lang.name())))
+                .text(messageSource.getMessage("start_messaging_btn_msg", null, new Locale(lang.name())))
                 .callbackData("Apply").build());
         actionButtonsLine1.add(InlineKeyboardButton.builder()
-                .text(messageSource.getMessage("next_btn_msg",null, new Locale(lang.name())))
+                .text(messageSource.getMessage("next_btn_msg", null, new Locale(lang.name())))
                 .callbackData("Next").build());
         actionButtons.add(actionButtonsLine1);
         InlineKeyboardMarkup markupKeyboard = new InlineKeyboardMarkup();
@@ -184,7 +225,7 @@ public class MessagingService {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
                 .text(messageSource.getMessage("found_random_user_msg",
-                                List.of(user.getGender(), user.getAge(), user.getCity()).toArray(), new Locale(lang.name())))
+                        List.of(user.getGender(), user.getAge(), user.getCity()).toArray(), new Locale(lang.name())))
                 .replyMarkup(markupKeyboard)
                 .build();
     }
@@ -192,7 +233,8 @@ public class MessagingService {
     public SendMessage createStartMessagingMessage(Long chatId, Language lang) {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(messageSource.getMessage("start_messaging_msg",null, new Locale(lang.name())))
+                .text(messageSource.getMessage("start_messaging_msg", null, new Locale(lang.name())))
+                .replyMarkup(buttonsService.createMessagingButtons(lang))
                 .build();
     }
 
@@ -200,7 +242,7 @@ public class MessagingService {
         List<List<InlineKeyboardButton>> actionButtons = new ArrayList<>();
         List<InlineKeyboardButton> actionButtonsLine1 = new ArrayList<>();
         actionButtonsLine1.add(InlineKeyboardButton.builder()
-                .text(messageSource.getMessage("cancel_btn_msg",null, new Locale(user.getLanguage().name())))
+                .text(messageSource.getMessage("cancel_btn_msg", null, new Locale(user.getLanguage().name())))
                 .callbackData("Cancel").build());
         actionButtons.add(actionButtonsLine1);
         InlineKeyboardMarkup markupKeyboard = new InlineKeyboardMarkup();
@@ -208,7 +250,7 @@ public class MessagingService {
 
         return SendMessage.builder()
                 .chatId(String.valueOf(user.getChatId()))
-                .text(messageSource.getMessage("message_request_sent_msg",null, new Locale(user.getLanguage().name())))
+                .text(messageSource.getMessage("message_request_sent_msg", null, new Locale(user.getLanguage().name())))
                 .replyMarkup(markupKeyboard)
                 .build();
     }
@@ -217,10 +259,10 @@ public class MessagingService {
         List<List<InlineKeyboardButton>> actionButtons = new ArrayList<>();
         List<InlineKeyboardButton> actionButtonsLine1 = new ArrayList<>();
         actionButtonsLine1.add(InlineKeyboardButton.builder()
-                .text(messageSource.getMessage("apply_btn_msg",null, new Locale(secretFriend.getLanguage().name())))
+                .text(messageSource.getMessage("apply_btn_msg", null, new Locale(secretFriend.getLanguage().name())))
                 .callbackData("Apply").build());
         actionButtonsLine1.add(InlineKeyboardButton.builder()
-                .text(messageSource.getMessage("decline_btn_msg",null, new Locale(secretFriend.getLanguage().name())))
+                .text(messageSource.getMessage("decline_btn_msg", null, new Locale(secretFriend.getLanguage().name())))
                 .callbackData("Decline").build());
         actionButtons.add(actionButtonsLine1);
         InlineKeyboardMarkup markupKeyboard = new InlineKeyboardMarkup();
@@ -239,7 +281,7 @@ public class MessagingService {
     public SendMessage createDeclineRequestMessage(Long chatId, Language lang) {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(messageSource.getMessage("decline_request_msg",null, new Locale(lang.name())))
+                .text(messageSource.getMessage("decline_request_msg", null, new Locale(lang.name())))
                 .build();
     }
 }

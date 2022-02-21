@@ -1,8 +1,8 @@
 package com.mazurok.secretFriend.service;
 
 import com.mazurok.secretFriend.exceptions.IllegalInputException;
+import com.mazurok.secretFriend.exceptions.NotFoundException;
 import com.mazurok.secretFriend.repository.entity.Commands;
-import com.mazurok.secretFriend.repository.entity.Language;
 import com.mazurok.secretFriend.repository.entity.UserEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,13 +15,12 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendSticker;
 import org.telegram.telegrambots.meta.api.methods.send.SendVoice;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 @Slf4j
 @Component
@@ -32,6 +31,7 @@ public class SecretFriendBot extends TelegramLongPollingBot {
     private final UserService userService;
     private final UserConfigService userConfigService;
     private final MessagingService messagingService;
+    private final ButtonsService buttonsService;
 
     private final MessageSource messageSource;
 
@@ -41,6 +41,7 @@ public class SecretFriendBot extends TelegramLongPollingBot {
                            UserService userService,
                            UserConfigService userConfigService,
                            MessagingService messagingService,
+                           ButtonsService buttonsService,
                            MessageSource messageSource) {
         this.botUsername = botUsername;
         this.token = token;
@@ -48,6 +49,7 @@ public class SecretFriendBot extends TelegramLongPollingBot {
         this.userService = userService;
         this.userConfigService = userConfigService;
         this.messagingService = messagingService;
+        this.buttonsService = buttonsService;
         this.messageSource = messageSource;
     }
 
@@ -63,7 +65,6 @@ public class SecretFriendBot extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        // TODO: bot logic
         UserEntity user;
         List<Object> messages;
 
@@ -73,43 +74,88 @@ public class SecretFriendBot extends TelegramLongPollingBot {
                 return;
             }
 
-            if (update.hasMessage() && update.getMessage().hasText() && (update.getMessage().getText().startsWith("/cmd")
-                    || update.getMessage().getText().equals("/start"))) {
-                messages = handleCommand(user, update);
-            } else {
-                messages = switch (user.getStage()) {
-                    case CONFIGURE_FULL_PROFILE, CONFIGURE_FULL_SECRET_FRIEND_PROFILE, CONFIGURE_PROFILE,
-                            CONFIGURE_SECRET_FRIEND_PROFILE -> userConfigService.handleConfigStage(user, update);
-                    case AUTO_LOOKING_FOR_A_FRIEND, CHOOSE_FRIEND, MESSAGE_REQUEST, MESSAGING ->
-                            messagingService.handleConfigStage(user, update);
-                    case NO_STAGE -> List.of(SendMessage.builder()
-                            .chatId(String.valueOf(user.getChatId()))
-                            .text(messageSource.getMessage("no_stage_msg",
-                                    List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
-                            .replyMarkup(createMainButtons(user))
-                            .build());
-                };
+            if (update.hasMyChatMember()) {
+                return;
             }
+            if (update.hasMessage() && update.getMessage().hasText() && update.getMessage().getText().startsWith("/")) {
+                try {
+                    messages = handleCommand(user, update);
+                    sendMessage(messages);
+                    return;
+                } catch (NotFoundException e) {
+                    log.warn("command {} not found", update.getMessage().getText(), e);
+                }
+            }
+            messages = handleStage(user, update);
+            sendMessage(messages);
         } catch (IllegalInputException e) {
             log.error("Error", e);
-            return;
         }
-        sendMessage(messages);
     }
 
-    private List<Object> handleCommand(UserEntity user, Update update) throws IllegalInputException {
+    private List<Object> handleCommand(UserEntity user, Update update) throws NotFoundException {
         Commands command;
         command = Commands.fromString(update.getMessage().getText());
-        return switch (command) {
-            case START -> List.of(SendMessage.builder()
+        if (!isCommandAllowed(user, command)) {
+            // create error message
+            return List.of(SendMessage.builder()
+                    .text("error")
                     .chatId(String.valueOf(user.getChatId()))
-                    .text(messageSource.getMessage("hello_msg",
-                            List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
-                    .replyMarkup(createMainButtons(user))
                     .build());
-            case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE, SHOW_PROFILE ->
-                    userConfigService.handleConfigCommand(command, user);
-            case GET_RANDOM_FRIEND, START_AUTOMATIC_SEARCH -> messagingService.handleConfigCommand(command, user);
+        }
+        return switch (command) {
+            case START -> {
+                List<Object> res = new ArrayList<>();
+                res.add(SendMessage.builder()
+                        .chatId(String.valueOf(user.getChatId()))
+                        .text(messageSource.getMessage("hello_msg",
+                                List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
+                        .build());
+                res.addAll(userConfigService.handleConfigStage(user, update));
+                yield res;
+            }
+            case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE, SHOW_PROFILE -> userConfigService.handleConfigCommand(command, user);
+            case GET_RANDOM_FRIEND, START_AUTOMATIC_SEARCH, STOP_MESSAGING, BLOCK_USER -> messagingService.handleConfigCommand(command, user);
+            case CANCEL -> {
+//                handleCancelCommand(user);
+                user.getStages().pop();
+                userService.save(user);
+                yield handleStage(user, update);
+            }
+        };
+    }
+
+    private List<Object> handleStage(UserEntity user, Update update) {
+        return switch (user.getStages().peek().getFirst()) {
+            case CONFIGURE_FULL_PROFILE, CONFIGURE_FULL_SECRET_FRIEND_PROFILE, CONFIGURE_PROFILE,
+                    CONFIGURE_SECRET_FRIEND_PROFILE -> userConfigService.handleConfigStage(user, update);
+            case AUTO_LOOKING_FOR_A_FRIEND, CHOOSE_FRIEND, MESSAGE_REQUEST, MESSAGING -> messagingService.handleConfigStage(user, update);
+            case NO_STAGE -> List.of(SendMessage.builder()
+                    .chatId(String.valueOf(user.getChatId()))
+                    .text(messageSource.getMessage("no_stage_msg",
+                            List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
+                    .replyMarkup(buttonsService.createMainButtons(user))
+                    .build());
+        };
+    }
+
+    private List<Object> handleCancelCommand(UserEntity user) {
+        return switch (user.getStages().peek().getFirst()) {
+            case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE -> userConfigService.handleCancelCommand(user);
+            case AUTO_LOOKING_FOR_A_FRIEND, CHOOSE_FRIEND -> messagingService.handleCancelCommand(user);
+            default -> null;
+        };
+    }
+
+    private boolean isCommandAllowed(UserEntity user, Commands command) {
+        return switch (user.getStages().peek().getFirst()) {
+            case NO_STAGE -> List.of(Commands.CONFIGURE_PROFILE, Commands.CONFIGURE_SECRET_FRIEND_PROFILE,
+                    Commands.SHOW_PROFILE, Commands.GET_RANDOM_FRIEND, Commands.START_AUTOMATIC_SEARCH).contains(command);
+
+            case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE, AUTO_LOOKING_FOR_A_FRIEND, CHOOSE_FRIEND, MESSAGE_REQUEST -> Objects.equals(Commands.CANCEL, command);
+            case MESSAGING -> List.of(Commands.STOP_MESSAGING, Commands.BLOCK_USER).contains(command);
+
+            default -> false;
         };
     }
 
@@ -133,34 +179,5 @@ public class SecretFriendBot extends TelegramLongPollingBot {
                 log.error("Exception: {}", e.toString());
             }
         }
-    }
-
-    private ReplyKeyboardMarkup createMainButtons(UserEntity user) {
-        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
-        replyKeyboardMarkup.setSelective(true);
-        replyKeyboardMarkup.setResizeKeyboard(true);
-        replyKeyboardMarkup.setOneTimeKeyboard(true);
-
-        KeyboardRow keyboardRow1 = new KeyboardRow();
-        keyboardRow1.add(new KeyboardButton(
-                Commands.CONFIGURE_PROFILE.command.getOrDefault(user.getLanguage().name(),
-                        Commands.CONFIGURE_PROFILE.command.get(Language.en.name()))));
-        keyboardRow1.add(new KeyboardButton(
-                Commands.CONFIGURE_SECRET_FRIEND_PROFILE.command.getOrDefault(user.getLanguage().name(),
-                        Commands.CONFIGURE_SECRET_FRIEND_PROFILE.command.get(Language.en.name()))));
-
-        KeyboardRow keyboardRow2 = new KeyboardRow();
-        keyboardRow2.add(new KeyboardButton(
-                Commands.SHOW_PROFILE.command.getOrDefault(user.getLanguage().name(),
-                    Commands.SHOW_PROFILE.command.get(Language.en.name()))));
-
-        KeyboardRow keyboardRow3 = new KeyboardRow();
-        keyboardRow3.add(new KeyboardButton(
-                Commands.GET_RANDOM_FRIEND.command.getOrDefault(user.getLanguage().name(),
-                    Commands.GET_RANDOM_FRIEND.command.get(Language.en.name()))));
-//        keyboardRow3.add(new KeyboardButton(Commands.START_AUTOMATIC_SEARCH.command));
-
-        replyKeyboardMarkup.setKeyboard(List.of(keyboardRow1, keyboardRow2, keyboardRow3));
-        return replyKeyboardMarkup;
     }
 }

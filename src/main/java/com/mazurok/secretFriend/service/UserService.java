@@ -7,6 +7,7 @@ import com.mazurok.secretFriend.repository.entity.StagePart;
 import com.mazurok.secretFriend.repository.entity.UserEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
@@ -54,6 +55,10 @@ public class UserService {
         return userEntityOptional.orElseGet(() -> createUserEntity(user, chatId));
     }
 
+    public UserEntity save(UserEntity user) {
+        return userRepository.save(user);
+    }
+
     private UserEntity createUserEntity(User user, Long chatId) {
         UserEntity userEntity = UserEntity.builder()
                 .id(user.getId())
@@ -61,10 +66,11 @@ public class UserService {
                 .lastName(user.getLastName())
                 .userName(user.getUserName())
                 .chatId(chatId)
-                .stage(NO_STAGE)
-                .stagePart(StagePart.NO_ACTION)
                 .language(Language.valueOf(user.getLanguageCode()))
                 .build();
+
+        userEntity.getStages().add(Pair.of(NO_STAGE, StagePart.NO_ACTION));
+        userEntity.getStages().add(Pair.of(CONFIGURE_FULL_PROFILE, StagePart.ASK_AGE));
         userRepository.save(userEntity);
         return userEntity;
     }
