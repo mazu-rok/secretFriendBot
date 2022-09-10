@@ -9,21 +9,21 @@ import java.util.NoSuchElementException;
 public enum Commands {
     START("/start",
             "/start"),
-    CONFIGURE_PROFILE("/Configure profile",
-            "/Налаштувати профіль"),
-    CONFIGURE_SECRET_FRIEND_PROFILE("/Configure profile for your secret friend",
-            "/Налаштувати профіль секретного друга"),
-    SHOW_PROFILE("/Show my profile",
-            "/Показати мій профіль"),
+    CONFIGURE_PROFILE("| Configure profile |",
+            "| Налаштувати профіль |"),
+    CONFIGURE_SECRET_FRIEND_PROFILE("| Configure profile for your secret friend |",
+            "| Налаштувати критерії пошуку |"),
+    SHOW_PROFILE("| Show my profile |",
+            "| Показати мій профіль |"),
 
-    GET_RANDOM_FRIEND("/Get random secret friend",
-            "/Знайти випадкового друга"),
-    START_AUTOMATIC_SEARCH("/Start automatic search for a secret friend",
-            "/Почати автоматичний пошук друга"),
+    GET_RANDOM_FRIEND("| Get random secret friend |",
+            "| Знайти випадкового друга |"),
+    START_AUTOMATIC_SEARCH("| Start automatic search for a secret friend |",
+            "| Почати автоматичний пошук друга |"),
 
-    STOP_MESSAGING("/Stop messaging", "/Зупинити спілкування"),
-    BLOCK_USER("/Block user", "/Заблокувати користувача"),
-    CANCEL("/Cancel", "/Відмінити");
+    STOP_MESSAGING("| Stop messaging |", "| Зупинити спілкування |"),
+    BLOCK_USER("| Block user |", "| Заблокувати користувача |"),
+    CANCEL("| Cancel |", "| Відмінити |");
 
 
     public final Map<String, String> command;

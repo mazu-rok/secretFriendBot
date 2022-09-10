@@ -15,21 +15,21 @@ import java.util.List;
 @Service
 public class ButtonsService {
 
-    public ReplyKeyboardMarkup createMainButtons(UserEntity user) {
+    public ReplyKeyboardMarkup createMainButtons(Language language) {
         ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
-        replyKeyboardMarkup.setSelective(true);
+//        replyKeyboardMarkup.setSelective(true);
         replyKeyboardMarkup.setResizeKeyboard(true);
-        replyKeyboardMarkup.setOneTimeKeyboard(true);
+//        replyKeyboardMarkup.setOneTimeKeyboard(true);
 
         KeyboardRow keyboardRow1 = new KeyboardRow();
-        keyboardRow1.add(new KeyboardButton(Commands.CONFIGURE_PROFILE.getLocalizedText(user.getLanguage())));
-        keyboardRow1.add(new KeyboardButton(Commands.CONFIGURE_SECRET_FRIEND_PROFILE.getLocalizedText(user.getLanguage())));
+        keyboardRow1.add(new KeyboardButton(Commands.CONFIGURE_PROFILE.getLocalizedText(language)));
+        keyboardRow1.add(new KeyboardButton(Commands.CONFIGURE_SECRET_FRIEND_PROFILE.getLocalizedText(language)));
 
         KeyboardRow keyboardRow2 = new KeyboardRow();
-        keyboardRow2.add(new KeyboardButton(Commands.SHOW_PROFILE.getLocalizedText(user.getLanguage())));
+        keyboardRow2.add(new KeyboardButton(Commands.SHOW_PROFILE.getLocalizedText(language)));
 
         KeyboardRow keyboardRow3 = new KeyboardRow();
-        keyboardRow3.add(new KeyboardButton(Commands.GET_RANDOM_FRIEND.getLocalizedText(user.getLanguage())));
+        keyboardRow3.add(new KeyboardButton(Commands.GET_RANDOM_FRIEND.getLocalizedText(language)));
 //        keyboardRow3.add(new KeyboardButton(Commands.START_AUTOMATIC_SEARCH.command));
 
         replyKeyboardMarkup.setKeyboard(List.of(keyboardRow1, keyboardRow2, keyboardRow3));
@@ -38,9 +38,9 @@ public class ButtonsService {
 
     public ReplyKeyboardMarkup createMessagingButtons(Language lang) {
         ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
-        replyKeyboardMarkup.setSelective(true);
+//        replyKeyboardMarkup.setSelective(true);
         replyKeyboardMarkup.setResizeKeyboard(true);
-        replyKeyboardMarkup.setOneTimeKeyboard(true);
+//        replyKeyboardMarkup.setOneTimeKeyboard(true);
 
         KeyboardRow keyboardRow1 = new KeyboardRow();
         keyboardRow1.add(new KeyboardButton(Commands.STOP_MESSAGING.getLocalizedText(lang)));
@@ -52,9 +52,9 @@ public class ButtonsService {
 
     public ReplyKeyboardMarkup createCancelButton(Language lang) {
         ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
-        replyKeyboardMarkup.setSelective(true);
+//        replyKeyboardMarkup.setSelective(true);
         replyKeyboardMarkup.setResizeKeyboard(true);
-        replyKeyboardMarkup.setOneTimeKeyboard(true);
+//        replyKeyboardMarkup.setOneTimeKeyboard(true);
 
         KeyboardRow keyboardRow1 = new KeyboardRow();
         keyboardRow1.add(new KeyboardButton(Commands.CANCEL.getLocalizedText(lang)));

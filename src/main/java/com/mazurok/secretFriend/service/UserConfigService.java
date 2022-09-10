@@ -45,7 +45,8 @@ public class UserConfigService {
         switch (command) {
             case CONFIGURE_PROFILE -> {
                 messages.add(SendMessage.builder()
-                        .text("Ok!")
+                        .text(messageSource.getMessage("show_profile_msg", List.of(user.getFirstName(), user.getLastName(),
+                                user.getAge(), user.getCity(), user.getGender()).toArray(), new Locale(user.getLanguage().name())))
                         .chatId(String.valueOf(user.getChatId()))
                         .replyMarkup(buttonsService.createCancelButton(user.getLanguage()))
                         .build());
@@ -55,7 +56,10 @@ public class UserConfigService {
             }
             case CONFIGURE_SECRET_FRIEND_PROFILE -> {
                 messages.add(SendMessage.builder()
-                        .text("")
+                        .text(messageSource.getMessage("update_sec_friend_profile_msg",
+                                List.of(user.getSecretFriendConfig().getGender(), user.getSecretFriendConfig().getMinAge(),
+                                user.getSecretFriendConfig().getMaxAge(),user.getSecretFriendConfig().getCity()).toArray(),
+                                new Locale(user.getLanguage().name())))
                         .chatId(String.valueOf(user.getChatId()))
                         .replyMarkup(buttonsService.createCancelButton(user.getLanguage()))
                         .build());
@@ -190,7 +194,7 @@ public class UserConfigService {
             resultMessages = List.of(createUserProfileFinishedMsg(user, update.getCallbackQuery().getId()),
                     SendMessage.builder()
                             .chatId(String.valueOf(user.getChatId()))
-                            .replyMarkup(buttonsService.createMainButtons(user))
+                            .replyMarkup(buttonsService.createMainButtons(user.getLanguage()))
                             .text(messageSource.getMessage("profile_configured_msg", null, new Locale(user.getLanguage().name())))
                             .build());
         }
@@ -213,7 +217,7 @@ public class UserConfigService {
         return List.of(SendMessage.builder()
                 .text(messageSource.getMessage("no_stage_msg",
                         List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
-                .replyMarkup(buttonsService.createMainButtons(user)).build());
+                .replyMarkup(buttonsService.createMainButtons(user.getLanguage())).build());
 
     }
 
@@ -317,6 +321,7 @@ public class UserConfigService {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
                 .text(messageSource.getMessage("saved_msg", null, new Locale(lang.name())))
+                .replyMarkup(buttonsService.createMainButtons(lang))
                 .build();
     }
 

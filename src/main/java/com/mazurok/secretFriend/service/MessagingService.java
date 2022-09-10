@@ -1,5 +1,6 @@
 package com.mazurok.secretFriend.service;
 
+import com.mazurok.secretFriend.exceptions.NotFoundException;
 import com.mazurok.secretFriend.repository.UserRepository;
 import com.mazurok.secretFriend.repository.entity.Commands;
 import com.mazurok.secretFriend.repository.entity.Language;
@@ -45,9 +46,14 @@ public class MessagingService {
 
         switch (command) {
             case GET_RANDOM_FRIEND -> {
-                user.getStages().add(Pair.of(CHOOSE_FRIEND, NO_ACTION));
-                userRepository.save(user);
-                messages.addAll(getRandomUser(user));
+                try {
+                    messages.addAll(getRandomUser(user));
+                    user.getStages().add(Pair.of(CHOOSE_FRIEND, NO_ACTION));
+                    userRepository.save(user);
+                } catch (NotFoundException e) {
+                    log.error("Random user not found", e);
+                    messages.add(randomUserNotFoundMessage(String.valueOf(user.getChatId()), user.getLanguage()));
+                }
             }
             case START_AUTOMATIC_SEARCH -> {
 //                messages.addAll()
@@ -68,7 +74,11 @@ public class MessagingService {
                 if (update.hasCallbackQuery() && update.getCallbackQuery().getData().contains("Apply")) {
                     yield sendMessagingRequest(user);
                 } else if (!update.hasCallbackQuery() || update.getCallbackQuery().getData().contains("Next")) {
-                    yield getRandomUser(user);
+                    try {
+                        yield getRandomUser(user);
+                    } catch (NotFoundException e) {
+                        throw new RuntimeException(e);
+                    }
                 } else {
                     yield null; // send notification to choose a command
                 }
@@ -114,15 +124,20 @@ public class MessagingService {
         };
     }
 
-    public List<Object> getRandomUser(UserEntity user) {
+    public List<Object> getRandomUser(UserEntity user) throws NotFoundException {
         UserEntity randomUser = userRepository.findRandomUserByIdNot(user.getId());
         if (randomUser == null) {
-            throw new NoSuchElementException("Random user not found");
+            throw new NotFoundException("Random user for %s not found".formatted(user.getUserName()));
         }
         user.setSecretFriend(randomUser);
         userRepository.save(user);
 
-        return List.of(createFoundUserRepresentationMessage(randomUser, user.getChatId(), user.getLanguage()));
+        return List.of(SendMessage.builder()
+                        .chatId(String.valueOf(user.getChatId()))
+                        .text(messageSource.getMessage("found_random_user_msg", null, new Locale(user.getLanguage().name())))
+                        .replyMarkup(buttonsService.createCancelButton(user.getLanguage()))
+                        .build(),
+                createFoundUserRepresentationMessage(randomUser, user.getChatId(), user.getLanguage()));
     }
 
     public List<Object> sendMessagingRequest(UserEntity user) {
@@ -166,7 +181,14 @@ public class MessagingService {
         userRepository.save(user.getSecretFriend());
         userRepository.save(user);
 
-        return getRandomUser(user);
+        try {
+            return getRandomUser(user);
+        } catch (NotFoundException e) {
+            user.getStages().pop();
+            userRepository.save(user);
+
+            return List.of(randomUserNotFoundMessage(String.valueOf(user.getChatId()), user.getLanguage()));
+        }
     }
 
     public List<Object> stopMessaging(UserEntity user) {
@@ -176,13 +198,13 @@ public class MessagingService {
                 .text(messageSource.getMessage("messaging_canceled_friend", null,
                         new Locale(secFriend.getLanguage().name())))
                 .chatId(String.valueOf(secFriend.getChatId()))
-                .replyMarkup(buttonsService.createMainButtons(secFriend))
+                .replyMarkup(buttonsService.createMainButtons(secFriend.getLanguage()))
                 .build();
 
         SendMessage cancelMessage = SendMessage.builder()
                 .text(messageSource.getMessage("messaging_canceled", null, new Locale(user.getLanguage().name())))
                 .chatId(String.valueOf(user.getChatId()))
-                .replyMarkup(buttonsService.createMainButtons(user))
+                .replyMarkup(buttonsService.createMainButtons(user.getLanguage()))
                 .build();
 
         secFriend.setSecretFriend(null);
@@ -202,7 +224,7 @@ public class MessagingService {
         return List.of(SendMessage.builder()
                 .text(messageSource.getMessage("no_stage_msg",
                         List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
-                .replyMarkup(buttonsService.createMainButtons(user)).build());
+                .replyMarkup(buttonsService.createMainButtons(user.getLanguage())).build());
     }
 
     /**
@@ -224,7 +246,7 @@ public class MessagingService {
 
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
-                .text(messageSource.getMessage("found_random_user_msg",
+                .text(messageSource.getMessage("secret_friend_desc",
                         List.of(user.getGender(), user.getAge(), user.getCity()).toArray(), new Locale(lang.name())))
                 .replyMarkup(markupKeyboard)
                 .build();
@@ -282,6 +304,14 @@ public class MessagingService {
         return SendMessage.builder()
                 .chatId(String.valueOf(chatId))
                 .text(messageSource.getMessage("decline_request_msg", null, new Locale(lang.name())))
+                .build();
+    }
+
+    private SendMessage randomUserNotFoundMessage(String chatId, Language language) {
+        return SendMessage.builder()
+                .chatId(String.valueOf(chatId))
+                .text(messageSource.getMessage("random_user_not_found_msg", null, new Locale(language.name())))
+                .replyMarkup(buttonsService.createMainButtons(language))
                 .build();
     }
 }

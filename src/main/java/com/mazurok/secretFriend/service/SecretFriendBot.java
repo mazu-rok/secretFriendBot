@@ -77,15 +77,20 @@ public class SecretFriendBot extends TelegramLongPollingBot {
             if (update.hasMyChatMember()) {
                 return;
             }
-            if (update.hasMessage() && update.getMessage().hasText() && update.getMessage().getText().startsWith("/")) {
+            // handle input commands
+            if (update.hasMessage() && update.getMessage().hasText()
+                    && update.getMessage().getText().startsWith("| ") && update.getMessage().getText().endsWith(" |")) {
                 try {
                     messages = handleCommand(user, update);
                     sendMessage(messages);
                     return;
                 } catch (NotFoundException e) {
                     log.warn("command {} not found", update.getMessage().getText(), e);
+                    // ????
+//                    return;
                 }
             }
+            // handle stage
             messages = handleStage(user, update);
             sendMessage(messages);
         } catch (IllegalInputException e) {
@@ -97,12 +102,13 @@ public class SecretFriendBot extends TelegramLongPollingBot {
         Commands command;
         command = Commands.fromString(update.getMessage().getText());
         if (!isCommandAllowed(user, command)) {
-            // create error message
+            // create messages for each stage
             return List.of(SendMessage.builder()
-                    .text("error")
+                    .text(messageSource.getMessage("command_forbidden_message", null, new Locale(user.getLanguage().name())))
                     .chatId(String.valueOf(user.getChatId()))
                     .build());
         }
+
         return switch (command) {
             case START -> {
                 List<Object> res = new ArrayList<>();
@@ -117,7 +123,6 @@ public class SecretFriendBot extends TelegramLongPollingBot {
             case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE, SHOW_PROFILE -> userConfigService.handleConfigCommand(command, user);
             case GET_RANDOM_FRIEND, START_AUTOMATIC_SEARCH, STOP_MESSAGING, BLOCK_USER -> messagingService.handleConfigCommand(command, user);
             case CANCEL -> {
-//                handleCancelCommand(user);
                 user.getStages().pop();
                 userService.save(user);
                 yield handleStage(user, update);
@@ -134,16 +139,8 @@ public class SecretFriendBot extends TelegramLongPollingBot {
                     .chatId(String.valueOf(user.getChatId()))
                     .text(messageSource.getMessage("no_stage_msg",
                             List.of(user.getFirstName()).toArray(), new Locale(user.getLanguage().name())))
-                    .replyMarkup(buttonsService.createMainButtons(user))
+                    .replyMarkup(buttonsService.createMainButtons(user.getLanguage()))
                     .build());
-        };
-    }
-
-    private List<Object> handleCancelCommand(UserEntity user) {
-        return switch (user.getStages().peek().getFirst()) {
-            case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE -> userConfigService.handleCancelCommand(user);
-            case AUTO_LOOKING_FOR_A_FRIEND, CHOOSE_FRIEND -> messagingService.handleCancelCommand(user);
-            default -> null;
         };
     }
 
@@ -151,10 +148,8 @@ public class SecretFriendBot extends TelegramLongPollingBot {
         return switch (user.getStages().peek().getFirst()) {
             case NO_STAGE -> List.of(Commands.CONFIGURE_PROFILE, Commands.CONFIGURE_SECRET_FRIEND_PROFILE,
                     Commands.SHOW_PROFILE, Commands.GET_RANDOM_FRIEND, Commands.START_AUTOMATIC_SEARCH).contains(command);
-
-            case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE, AUTO_LOOKING_FOR_A_FRIEND, CHOOSE_FRIEND, MESSAGE_REQUEST -> Objects.equals(Commands.CANCEL, command);
+            case CONFIGURE_PROFILE, CONFIGURE_SECRET_FRIEND_PROFILE, AUTO_LOOKING_FOR_A_FRIEND, CHOOSE_FRIEND -> Objects.equals(Commands.CANCEL, command);
             case MESSAGING -> List.of(Commands.STOP_MESSAGING, Commands.BLOCK_USER).contains(command);
-
             default -> false;
         };
     }
